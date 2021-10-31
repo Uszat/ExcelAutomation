@@ -1,6 +1,13 @@
 #pip3 install openpyxl
 from typing import ItemsView
 import openpyxl
+from openpyxl import Workbook
+import os
+import numpy as np
+
+#defines
+OFFSET_TO_START_FROM_ONE = 1 #starts from 0 but I want to start from 1
+OFFSET_TO_CALC_NO_PPL = 1 #people in sheet actually start from 2nd pos
 
 #define shortcuts for the answers
 tak = 'Tak, chcę zostać z kimś połączony/a'
@@ -12,13 +19,12 @@ female = 'Kobieta'
 unknown = 'Inna'
 both = 'Dowolnie'
 online = 'Online'
-stationary = 'Stacjonarnie'
-preferDays = 'Preferowanego terminu ćwiczeń w tygodniu'
+station = 'Stacjonarnie'
+preferDate = 'Preferowanego terminu ćwiczeń w tygodniu'
 preferSport = 'Preferowanej dyscypliny sportu'
 rano = 'Rano (6-11)'
 wdzien = 'W ciągu dnia (11-16)'
 wieczor = 'Wieczorem (16-22)'
-
 
 #sport dictionary
 sport = {
@@ -38,32 +44,47 @@ sport = {
     'basketball':'Koszykówka'
     }
 
-
 #specify the files location (or path)
-file = 'D:/Downloads/fitness_buddy.xlsx'
+cwd = os.path.dirname(os.path.abspath(__file__))
+file = cwd + '\\fitness_buddy.xlsx'
 
 #create an empty list to append values later on
 values = []
+
+#index of pairs with their buddy
+pairIndex = 1
+
+listOfGroups = []
 
 #create a class of people
 class Person(object):
     def __init__(self, number):
         self.number = number
-        self.rareFreq = False
-        self.medFreq = False
-        self.highFreq = False
+        self.freqz = ''
+        # self.lowFreq = False
+        # self.medFreq = False
+        # self.highFreq = False
         self.genderBucket = 'notSpecified'
 
+    def __eq__(self, other):
+        if (self.looksForBuddy == other.looksForBuddy and 
+            self.genderBucket == other.genderBucket and
+            self.freqz == other.freqz and
+            self.onlineStation == other.onlineStation and
+            self.dateSport == other.dateSport):
+            return True
+        else:
+            return False
     #print person data
     def showData(self):
-        print("number \t\t",        self.number + 1)
+        print("number \t\t",        self.number + OFFSET_TO_START_FROM_ONE)
         print("name \t\t",          self.name)
         print("looksForBuddy \t",   self.looksForBuddy)
         print("nameToPair \t",      self.nameToPair)
         print("genderPair \t",      self.genderPair)
         print("onlineStation \t",   self.onlineStation)
         print("townFrom \t",        self.townFrom)
-        print("baseOnDateSport ",   self.baseOnDateSport)
+        print("dateSport \t",       self.dateSport)
         print("monday \t\t",        self.monday)
         print("tuesday \t",         self.tuesday)
         print("wednesday \t",       self.wednesday)
@@ -74,16 +95,21 @@ class Person(object):
         print("discipline \t",      self.discipline)
         print("gender \t\t",        self.gender)
         print("freq \t\t",          self.freq)
-        print("freq \t\t",          self.rareFreq)
-        print("freq \t\t",          self.medFreq)
-        print("freq \t\t",          self.highFreq)
+        print("freqz \t\t",         self.freqz)
+        # print("freq \t\t",          self.lowFreq)
+        # print("freq \t\t",          self.medFreq)
+        # print("freq \t\t",          self.highFreq)
         print("genderBucket \t",    self.genderBucket)
         print(" ")
 
 #open file and worksheet
 workbook = openpyxl.load_workbook(file)
 worksheet = workbook.active
-noOfEntries = worksheet.max_row - 1
+noOfEntries = worksheet.max_row - OFFSET_TO_CALC_NO_PPL
+
+#create new workbook for assigned pairs
+wbAssigned = Workbook()
+wsAssigned =  wbAssigned.active
 
 #create list of objects People
 people = []
@@ -100,7 +126,7 @@ def initObject():
         person.genderPair =     worksheet['F' + str(i)].value
         person.onlineStation =  worksheet['G' + str(i)].value
         person.townFrom =       worksheet['H' + str(i)].value
-        person.baseOnDateSport =worksheet['I' + str(i)].value
+        person.dateSport =      worksheet['I' + str(i)].value
         person.monday =         worksheet['J' + str(i)].value
         person.tuesday =        worksheet['K' + str(i)].value
         person.wednesday =      worksheet['L' + str(i)].value
@@ -112,44 +138,149 @@ def initObject():
         person.gender =         worksheet['R' + str(i)].value
         person.freq =           worksheet['S' + str(i)].value
         
-
 initObject()
+
+def setFrequency(person):
+    if person.freq == 1 or person.freq == 2:
+        person.freqz = 'low'
+    elif person.freq == 3 or person.freq == 4:
+        person.freqz = 'med'
+    else:
+        person.freqz = 'high'
+
+def divideBySex(person):
+    if person.gender == female and person.genderPair == wfemale:
+        person.genderBucket = 'fwf'
+    elif (person.gender == female and person.genderPair == wmale) or (person.gender == male and person.genderPair == wfemale):
+        person.genderBucket = 'fwm'
+    elif person.gender == male and person.genderPair == wmale:
+        person.genderBucket = 'mwm'
+    elif (person.gender == female and person.genderPair == both) or (person.gender == male and person.genderPair == both) or (person.gender == unknown and person.genderPair == both):
+        person.genderBucket = 'both' #(f,m,u with both)
+    elif (person.gender == unknown and person.genderPair == wfemale):
+        person.genderBucket = 'uwf'
+    elif (person.gender == unknown and person.genderPair == wmale):
+        person.genderBucket = 'uwm'
+
+def putPersonCellShort(person):
+    global pairIndex
+    wsAssigned['A' + str(pairIndex)] = person.name 
+    pairIndex+=1
+
+def putPersonCell(person):
+    global pairIndex     
+    wsAssigned['A' + str(pairIndex)] = person.name
+    wsAssigned['B' + str(pairIndex)] = person.looksForBuddy 
+    wsAssigned['C' + str(pairIndex)] = person.nameToPair 
+    wsAssigned['D' + str(pairIndex)] = person.genderPair 
+    wsAssigned['E' + str(pairIndex)] = person.onlineStation 
+    wsAssigned['F' + str(pairIndex)] = person.townFrom 
+    wsAssigned['G' + str(pairIndex)] = person.dateSport 
+    wsAssigned['H' + str(pairIndex)] = person.gender 
+    wsAssigned['I' + str(pairIndex)] = person.freq   
+    # if(pairIndex % 3 == 0):
+    #     pairIndex+=2
+    # else:
+    #     pairIndex+=1    
+
+def putPersonCellBelow(person):
+    global pairIndex
+    pairIndex+=1
+    if(pairIndex % 3 == 0):
+        pairIndex+=1     
+    wsAssigned['A' + str(pairIndex)] = person.name 
+    pairIndex+=1
+
+def pairFriends(person):
+    global pairIndex
+    if(person.looksForBuddy == nie and person.nameToPair is not None):
+        putPersonCell(person)
+        pairIndex+=1
+
+def pairRest(person):
+    global pairIndex
+    genderList = ['fwf', 'fwm', 'mwm', 'both', 'uwf', 'uwm']
+    freqList = ['low', 'med', 'high']
+    onlineStationList = [online, station, both]
+    dateSportList = [preferDate, preferSport]
+    #tego na razie nie uzywam groupList = np.zeros((6,3,3,2))
+
+    if(person.looksForBuddy == tak):
+        for gender in genderList:
+            if(gender == person.genderBucket):
+                for freq in freqList:
+                    if(freq == person.freqz):
+                        for onlineStation in onlineStationList:
+                            if(onlineStation == person.onlineStation):
+                                for dateSport in dateSportList:
+                                    if(dateSport == person.dateSport):
+                                        putPersonCell(person)
+                                        for p in listOfGroups:
+                                            if(person == p):
+                                                listOfGroups[0].extend(person)
+                                            else:
+                                                listOfGroups.append(person)
+                                            #add the person under this stack list
+                                       # else:
+                                       #     add it as a new stack new array 
+                                        pairIndex+=1
+#make list = [group1], [group2]... i jesli person == person from any group of the list then add person do tej grupy, else add do nowej grupy
+
+
+def pairRestIDIOT(person):
+    if(person.genderBucket == 'fwf'):
+        if(person.freqz == 'low'):
+            if(person.onlineStation == online or person.onlineStation == both):
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
+            elif(person.onlineStation == station):
+                #if there is sb from your town ? proceed : goto online
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
+        elif(person.freqz == 'med'):
+            if(person.onlineStation == online or person.onlineStation == both):
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
+            elif(person.onlineStation == station):
+                #if there is sb from your town ? proceed : goto online
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
+        elif(person.freqz == 'high'):
+            if(person.onlineStation == online or person.onlineStation == both):
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
+            elif(person.onlineStation == station):
+                #if there is sb from your town ? proceed : goto online
+                if(person.dateSport == preferDate):
+                    putPersonCellBelow(person)
+                elif(person.dateSport == preferSport):
+                    putPersonCellBelow(person)
 
 def assignPeople():
 
     for person in people:
         #set person's frequency of excercises
-        if person.freq == 1 or person.freq == 2:
-            person.rareFreq = True
-        elif person.freq == 3 or person.freq == 4:
-            person.medFreq = True
-        else:
-            person.highFreq = True  
+        setFrequency(person)
 
         #rozdziel ludzi do kontenerow wzgledem plci i preferencji plci
-        if person.gender == female and person.genderPair == wfemale:
-            person.genderBucket = 'fwf'
-        elif (person.gender == female and person.genderPair == wmale) or (person.gender == male and person.genderPair == wfemale):
-            person.genderBucket = 'fwm'
-        elif person.gender == male and person.genderPair == wmale:
-            person.genderBucket = 'mwm'
-        elif (person.gender == female and person.genderPair == both) or (person.gender == male and person.genderPair == both) or (person.gender == unknown and person.genderPair == both):
-            person.genderBucket = 'both' #(f,m,u with both)
-        elif (person.gender == unknown and person.genderPair == wfemale):
-            person.genderBucket = 'uwf'
-        elif (person.gender == unknown and person.genderPair == wmale):
-            person.genderBucket = 'uwm'
+        divideBySex(person)
 
+        #przydziel ludzi co maja kumpla
+        pairFriends(person)
+        
         #przydziel ludzi juz razem 
-        if (person.genderBucket == 'fwf' and person.rareFreq and person.onlineStation == online and person.baseOnDateSport == preferDays):
-            print(person.name)
-
-
-
-# for person in people:
-#     if(person.looksForBuddy == nie and person.nameToPair is not None):
-#         print("")
-
+        pairRest(person)
+        #pairRestIDIOT(person)
 
 #show all People's data
 def showAllPeople():
@@ -157,40 +288,23 @@ def showAllPeople():
         person.showData()
 
 assignPeople()
+#showAllPeople()
+
+wbAssigned.save(cwd + '\\fitness_buddy_assigned.xlsx')
+
+
+
+
+
+
+
 
 
 """
-Trzeba przejsc przez ludzi i powkładać ich do kontenerów
-    - has friend
-    - hasnt got friend
-    
-    if female w female and freq == 1 or freq == 2 and online
-       1 put to f with f and freq 1-2
-    if female w female and freq == 3 or freq == 4
-       1 put to f with f and freq 3-4
-    if female w female and freq == 5 or freq == 6 or freq == 7
-       1 put to f with f and freq 5-7
 
-    else if female with m or male and wants with f and freq == 1 or freq == 2 
-       2 put to f with m and freq 1-2
-    else if female with m or male and wants with f and freq == 3 or freq == 4 
-       2 put to f with m and freq 3-4
-    else if female with m or male and wants with f and freq == 5 or freq == 6 or freq == 7 
-       2 put to f with m and freq 3-4
-       
-#tak jak wyzej czestotliwosc dla kolejnych 4 przypadkow 
-
-    else if male and wants with m
-       3 put to m with m
-    else if f wants with b or m with b or u with b
-       4 put to both
-    else if u with f
-       5 put to f with both
-    else if u with m
-       6 put to m with both 
-
-
-    how many times a week 
+Trzeba zrobić grupy - 48 grup chyba
+moze objekt grupa albo cooooooooooś i automatycznie przypisuje osobe do danej grupy 
+w zależności od tego w jakie fory loopy itp poszedl
 
     kontenery:
     - plec
@@ -215,6 +329,4 @@ Trzeba przejsc przez ludzi i powkładać ich do kontenerów
     - Time vs Discipline
         - Time
         - Discipline
-
-
 """
